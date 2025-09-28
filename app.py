@@ -55,13 +55,43 @@ def get_llm_response(expert_type, user_input):
     """
     import os
     
+    # デバッグモード（開発時のみTrue）
+    DEBUG_MODE = False
+    
+    if DEBUG_MODE:
+        st.write("🔍 デバッグ情報:")
+    
     # OpenAI APIキーの確認
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return "⚠️ OpenAI APIキーが設定されていません。環境変数 'OPENAI_API_KEY' を設定してください。"
+        # Streamlit Cloudの場合、st.secretsからも確認
+        try:
+            api_key = st.secrets["OPENAI_API_KEY"]
+            if DEBUG_MODE:
+                st.write("✅ APIキーをst.secretsから取得しました")
+        except KeyError:
+            if DEBUG_MODE:
+                st.write("❌ st.secretsにもAPIキーが見つかりません")
+            return "⚠️ OpenAI APIキーが設定されていません。管理者に連絡してください。"
+    else:
+        if DEBUG_MODE:
+            st.write("✅ APIキーを環境変数から取得しました")
+    
+    # APIキーの形式確認（デバッグ時のみ、安全にマスク）
+    if DEBUG_MODE and api_key:
+        if len(api_key) > 16:
+            masked_key = f"sk-...{api_key[-4:]}"
+        else:
+            masked_key = "***無効な形式***"
+        st.write(f"🔑 APIキー確認: {masked_key}")
+        st.write(f"📏 APIキー長: {len(api_key)}文字")
+    
+    # APIキーの基本バリデーション
+    if not api_key or not api_key.startswith('sk-'):
+        return "⚠️ 無効なAPIキーです。正しいOpenAI APIキーを設定してください。"
     
     try:
-        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5)
+        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5, openai_api_key=api_key)
         
         # 対応するテンプレートを取得
         template = None
@@ -71,15 +101,38 @@ def get_llm_response(expert_type, user_input):
                 break
         
         if template:
+            if DEBUG_MODE:
+                st.write("✅ テンプレート取得成功")
             prompt = PromptTemplate(template=template, input_variables=["input"])
             chain = LLMChain(llm=llm, prompt=prompt)
+            if DEBUG_MODE:
+                st.write("✅ LLMチェーン作成成功、リクエスト送信中...")
             response = chain.run(input=user_input)
+            if DEBUG_MODE:
+                st.write("✅ レスポンス取得成功")
             return response
         else:
             return "申し訳ございませんが、該当する専門家が見つかりませんでした。"
             
     except Exception as e:
-        return f"⚠️ エラーが発生しました: {str(e)}\n\nOpenAI APIキーが正しく設定されているか確認してください。"
+        # エラーメッセージを安全にフィルタリング
+        error_msg = str(e)
+        
+        # APIキーを含む可能性のある部分を除去
+        if api_key in error_msg:
+            error_msg = error_msg.replace(api_key, "***API_KEY***")
+        
+        # よくあるエラーパターンで分類
+        if "401" in error_msg or "invalid_api_key" in error_msg:
+            return "⚠️ APIキーが無効です。正しいOpenAI APIキーを設定してください。"
+        elif "429" in error_msg or "rate_limit" in error_msg:
+            return "⚠️ API利用制限に達しました。しばらく時間をおいてから再試行してください。"
+        elif "insufficient_quota" in error_msg:
+            return "⚠️ OpenAI APIの使用量制限に達しました。課金設定を確認してください。"
+        else:
+            if DEBUG_MODE:
+                st.write(f"❌ エラー詳細: {error_msg}")
+            return "⚠️ 一時的なエラーが発生しました。しばらく時間をおいてから再試行してください。"
 
 # Streamlitアプリケーション
 def main():
