@@ -53,22 +53,33 @@ def get_llm_response(expert_type, user_input):
     Returns:
         str: LLMからの回答
     """
-    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5)
+    import os
     
-    # 対応するテンプレートを取得
-    template = None
-    for info in prompt_infos:
-        if info["name"] == expert_type:
-            template = info["prompt_template"]
-            break
+    # OpenAI APIキーの確認
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "⚠️ OpenAI APIキーが設定されていません。環境変数 'OPENAI_API_KEY' を設定してください。"
     
-    if template:
-        prompt = PromptTemplate(template=template, input_variables=["input"])
-        chain = LLMChain(llm=llm, prompt=prompt)
-        response = chain.run(input=user_input)
-        return response
-    else:
-        return "申し訳ございませんが、該当する専門家が見つかりませんでした。"
+    try:
+        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5)
+        
+        # 対応するテンプレートを取得
+        template = None
+        for info in prompt_infos:
+            if info["name"] == expert_type:
+                template = info["prompt_template"]
+                break
+        
+        if template:
+            prompt = PromptTemplate(template=template, input_variables=["input"])
+            chain = LLMChain(llm=llm, prompt=prompt)
+            response = chain.run(input=user_input)
+            return response
+        else:
+            return "申し訳ございませんが、該当する専門家が見つかりませんでした。"
+            
+    except Exception as e:
+        return f"⚠️ エラーが発生しました: {str(e)}\n\nOpenAI APIキーが正しく設定されているか確認してください。"
 
 # Streamlitアプリケーション
 def main():
